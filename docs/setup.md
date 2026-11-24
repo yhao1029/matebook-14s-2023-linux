@@ -21,7 +21,7 @@ Ubuntu 24.04 系依赖：
 sudo apt update
 sudo apt install git curl ca-certificates build-essential cmake pkg-config meson ninja-build \
     dkms mokutil libglib2.0-dev libgusb-dev libopencv-dev doctest-dev libpixman-1-dev \
-    python3-gi fprintd v4l-utils pamtester zenity
+    python3-gi python3-yaml bubblewrap fprintd v4l-utils pamtester zenity
 sudo apt install "linux-headers-$(uname -r)"
 ```
 
@@ -65,6 +65,8 @@ fprintd-verify -f right-index-finger "$(id -un)"
 
 在 Biopass GUI 或管理脚本中选择红外视频节点并添加本人样本。管理脚本默认下载项目的 YOLOv8n Face、EdgeFace S 通用模型，并校验发布包摘要。Biopass 把裁剪人脸保存在当前用户的私有目录，可以查看标签、改名、删除和新增姿态。同行发布时避免附上人脸照片或生物特征文件。不要把别人的样本录为自己的登录凭据。
 
+管理脚本的「验证测试」可单独验证生物样本。人脸会显示 Biopass 匹配的样本标签。指纹会逐项检查已录入的手指，可能需要用同一根手指轻触多次。已有安装可直接运行新版管理脚本。人脸验证需要 `bubblewrap` 和 `python3-yaml`，测试不进入系统认证流程。
+
 ## 4. 并行认证与验证
 
 将 Biopass 的策略设为 parallel，启用 face 和 fingerprint。GNOME 需要仅由 `gdm-fingerprint` 发起并行检测，`gdm-password` 提供独立的密码输入，避免两条会话抢传感器。忽略 `gdm-password`、`sshd`。本预览脚本还排除 Polkit；原机的全局 profile 试验与此处的限域安装不同。
@@ -76,6 +78,7 @@ fprintd-verify -f right-index-finger "$(id -un)"
 ## 5. 故障和恢复
 
 - 找不到传感器时先检查 ACPI、内核头文件、`dkms status`、`modinfo gxfp`、`journalctl -u fprintd`。更新内核后需要确认 DKMS 重建结果。
+- 如果录入返回 `enroll-unknown-error`，查看 `journalctl -u fprintd -n 30`。若日志显示 `Device disabled to prevent overheating`，libfprint 的温度估算保护已触发。先停止指纹验证和录入，让读取器空闲几分钟再试。保护依据工作时间估算，单凭这条日志无法确认硬件的实际温度。
 - TLS 校验失败优先确认本机配对是否匹配。双系统使用时避免重置传感器配对。
 - 光线、盖板遮挡和设备占用会影响红外采集。早期 Howdy/dlib 实验中，暗帧过滤放宽后才稳定看到脸。Biopass 使用不同引擎，请独立测试。
 - 只恢复认证可运行 `sudo /bin/bash /var/lib/matebook-biometrics-guide/restore.sh pam`。完整撤销本项目的后端用 [04-uninstall.sh](../scripts/04-uninstall.sh)。卸载前可按需用管理菜单逐个清除样本；卸载默认保留个人样本和通用依赖，避免删除其他软件使用的数据。手动安装的部分用各自备份撤销。

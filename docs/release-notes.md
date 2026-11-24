@@ -1,5 +1,12 @@
-面向 Ubuntu 24.04 系 amd64、GNOME/GDM 与 GXFP5130 的安装预览。下载并解压整个 `tar.gz`，在其中运行 `bash scripts/matebook-biometrics.sh`。包含总菜单和准备、后端安装、录入管理、卸载四个分支，手动步骤见 `docs/setup.md`。
+## v0.1.1-preview
 
-指纹需要本人设备已有的 32 字节配对文件。安装流程不会重新配对传感器。全流程默认录入一个人脸样本和右手食指。PAM 启用前会提示逐项测试，并准备限时恢复。分支卸载默认保留样本和通用依赖。
+- 指纹录入会读取设备报告的采集次数并显示进度，提示最后一次采集与录入完成后的独立验证。
+- 区分取消、超时和 libfprint 温度估算保护。保护仍由 libfprint 执行。
+- 管理菜单新增「3 验证测试」。人脸显示匹配的本地样本标签。指纹显示命中的手指及已有备注。当前 Ubuntu 24.04 自带的 fprintd 需要逐项比对，测试时可能需要轻触同一根手指多次。
+- 本机已实测录入右手拇指，验证新指纹，并用新菜单识别人脸样本和右手食指。干净系统的完整安装仍待验证。
 
-原部署在 Zorin OS 18.1 上通过 sudo 和 GNOME 锁屏的三种认证测试。发布脚本与实机部署使用相同组件，公开版安装路径与部分 PAM 路由有所不同。发布检查覆盖语法、菜单入口与依赖解析，公开版尚未在另一台干净机器上完成端到端安装。Arch、Fedora、其他桌面及 Secure Boot 签名流程暂未纳入自动安装。
+## 用法
+
+下载并解压整个压缩包，用普通桌面用户运行 `bash scripts/matebook-biometrics.sh`。已经完成部署的用户可直接运行新包里的 `bash scripts/03-manage.sh`。人脸验证测试需要 `bubblewrap` 和 `python3-yaml`。
+
+自动安装适用 Ubuntu 24.04 系 amd64、GNOME/GDM 和 Goodix GXFP5130。安装指纹驱动需要本人设备已有的配对文件。手动配置、限制及恢复见 [配置与验证](https://github.com/yhao1029/matebook-14s-2023-linux/blob/main/docs/setup.md)。

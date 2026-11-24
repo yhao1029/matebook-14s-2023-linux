@@ -186,9 +186,93 @@ def face_menu():
             face.unlink()
 
 
+def enrollment_stage_count(device_path):
+    if not re.fullmatch(r"/net/reactivated/Fprint/Device/[0-9]+", device_path):
+        return None
+    try:
+        result = subprocess.run(
+            ["gdbus", "call", "--system", "--dest", "net.reactivated.Fprint",
+             "--object-path", device_path, "--method", "org.freedesktop.DBus.Properties.Get",
+             "net.reactivated.Fprint.Device", "num-enroll-stages"],
+            capture_output=True, text=True, check=True, timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.fullmatch(r"\(<(?:int32 )?([1-9][0-9]*)>,\)\s*", result.stdout)
+    return int(match[1]) if match else None
+
+
 def enroll_finger(finger):
-    subprocess.run(["sudo", "fprintd-enroll", "-f", finger, USER], check=True)
-    subprocess.run(["fprintd-verify", "-f", finger, USER], check=True)
+    print("请先完成管理员认证。出现录入提示后，轻放要录入的手指。", flush=True)
+    subprocess.run(["sudo", "-v"], check=True)
+    started = int(time.time())
+    command = ["/usr/bin/timeout", "--foreground", "--signal=INT", "--kill-after=5s",
+               "300", "sudo", "-n", "/usr/bin/env", "LC_ALL=C", "/usr/bin/stdbuf", "-oL", "-eL",
+               "/usr/bin/fprintd-enroll", "-f", finger, USER]
+    stages = 0
+    total_stages = None
+    try:
+        with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True, errors="replace") as proc:
+            for line in proc.stdout:
+                print(line, end="", flush=True)
+                if line.startswith("Using device "):
+                    total_stages = enrollment_stage_count(line.removeprefix("Using device ").strip())
+                elif line.startswith("Enrolling "):
+                    if total_stages:
+                        print(f"本次预计需要 {total_stages} 次有效采集，完成后另做一次验证。",
+                              flush=True)
+                    else:
+                        print("本次需要多次有效采集，完成后另做一次验证。", flush=True)
+                    print("现在轻放指腹，保持到采集提示出现。", flush=True)
+                elif "enroll-stage-passed" in line:
+                    stages += 1
+                    progress = f"{stages}/{total_stages}" if total_stages and stages < total_stages else str(stages)
+                    next_step = ("下一次是最后一轮采集。"
+                                 if total_stages and stages + 1 == total_stages else "")
+                    print(f"已完成 {progress} 次采集。{next_step}请完全抬起，再轻放。",
+                          flush=True)
+                elif any(status in line for status in (
+                        "enroll-retry-scan", "enroll-swipe-too-short",
+                        "enroll-finger-not-centered", "enroll-remove-and-retry")):
+                    print("请移开手指，再用指腹中央轻放。", flush=True)
+            status = proc.wait()
+    except KeyboardInterrupt:
+        raise RuntimeError("已取消指纹录入。") from None
+    if status in (-2, 130):
+        raise RuntimeError("已取消指纹录入。")
+    if status in (124, 137):
+        raise RuntimeError("录入超时。请完全抬起手指，再试一次。")
+    if status:
+        try:
+            logs = subprocess.run(
+                ["journalctl", "-u", "fprintd", "--since", f"@{started}",
+                 "--no-pager", "-o", "cat", "-n", "40"],
+                text=True, capture_output=True, timeout=3,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            logs = None
+        if logs is not None and re.search(
+            r"error during (?:identify for enroll|enroll): Device disabled to prevent overheating",
+            logs.stdout, re.IGNORECASE,
+        ):
+            raise RuntimeError(
+                "libfprint 的温度估算保护暂时拒绝录入。此状态按读取器使用时长估算，没有实际温度读数。请让读取器完全空闲约 7 分钟后再试一次。若仍立即失败，请检查 fprintd 与驱动的会话状态。"
+            )
+        raise RuntimeError("指纹录入失败。详细原因请查看 journalctl -u fprintd -n 30。")
+    print("录入完成，指纹已保存。接下来单独验证，请抬起后再轻放一次同一根手指。", flush=True)
+    try:
+        verified = subprocess.run(
+            ["/usr/bin/timeout", "--foreground", "--signal=INT", "--kill-after=5s",
+             "45", "fprintd-verify", "-f", finger, USER],
+        )
+    except KeyboardInterrupt:
+        print("已取消验证，录入仍已保存。")
+        return
+    if verified.returncode:
+        print("录入已保存，本次验证未通过或已取消。可稍后重新验证。")
+    else:
+        print("验证通过，新指纹可以使用。")
 
 
 def delete_finger(finger):
@@ -235,6 +319,123 @@ def finger_menu():
     label_path.write_text(json.dumps(labels, ensure_ascii=False, indent=2))
 
 
+def verify_fingerprint_samples():
+    listing = subprocess.run(["fprintd-list", USER], env=dict(os.environ, LC_ALL="C"),
+                             capture_output=True, text=True)
+    enrolled = set(re.findall(r"^\s*- #\d+: ([\w-]+)", listing.stdout, re.M))
+    fingers = [(key, name) for key, name in FINGERS if key in enrolled]
+    if not fingers:
+        raise RuntimeError("没有可验证的已录入指纹，请先检查读取器和登记列表。")
+    note_path = DATA / "finger-labels.json"
+    notes = json.loads(note_path.read_text()) if note_path.is_file() else {}
+    print(f"共有 {len(fingers)} 个指纹记录。每次请使用同一根待测手指。")
+    for index, (key, name) in enumerate(fingers, 1):
+        print(f"正在比对 {index}/{len(fingers)}（{name}）。请先抬起，再轻放待测手指。",
+              flush=True)
+        result = subprocess.run(
+            ["timeout", "--foreground", "--signal=INT", "--kill-after=5s", "15",
+             "stdbuf", "-oL", "-eL", "fprintd-verify", "-f", key, USER],
+            env=dict(os.environ, LC_ALL="C"), stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True,
+        )
+        if "verify-match (done)" in result.stdout and result.returncode == 0:
+            suffix = f"（{notes[key]}）" if notes.get(key) else ""
+            print(f"匹配到了：{name}{suffix}")
+            return
+        if "verify-no-match (done)" not in result.stdout:
+            if result.returncode == 124:
+                raise RuntimeError("等待指纹超时，测试未完成。")
+            if result.returncode in (-2, 130):
+                print("已取消指纹测试。")
+                return
+            print(result.stdout.strip())
+            raise RuntimeError("读取器没有返回有效的比对结果，请查看 fprintd 日志。")
+        if index < len(fingers):
+            input("这一项未匹配。请先完全抬起，按回车进入下一项，再轻放同一根手指。")
+    print("没有匹配到任何已录入的指纹。")
+
+
+def verify_face_samples():
+    import shutil
+    import tempfile
+
+    try:
+        import yaml
+    except ImportError as error:
+        raise RuntimeError("人脸测试需要 python3-yaml。") from error
+    if not shutil.which("bwrap"):
+        raise RuntimeError("人脸测试需要 bubblewrap 来隔离临时诊断文件。")
+    samples = {str(path): path.stem for path in registered_faces()}
+    if not samples:
+        raise RuntimeError("请先录入人脸。")
+    if not (CONFIG / "biopass.db").is_file():
+        raise RuntimeError("找不到 Biopass 模型数据库。")
+    config = yaml.safe_load((CONFIG / "config.yaml").read_text())
+    config["strategy"].update(debug=True, execution_mode="sequential", order=["face"],
+                              ignore_services=[])
+    config["methods"]["fingerprint"]["enable"] = False
+    if not config["methods"]["face"]["enable"]:
+        raise RuntimeError("Biopass 当前关闭了人脸验证。")
+    # Biopass reads settings by passwd home and uses absolute paths in the DB.
+    # Override only its view of these two directories for this process.
+    fs_type = subprocess.check_output(
+        ["stat", "-f", "-c", "%T", "/dev/shm"], text=True
+    ).strip()
+    if fs_type != "tmpfs":
+        raise RuntimeError("人脸诊断需要 /dev/shm 为临时内存文件系统。")
+    with tempfile.TemporaryDirectory(prefix="matebook-face-test-", dir="/dev/shm") as tmp:
+        root = Path(tmp)
+        conf = root / "config"
+        data = root / "data"
+        conf.mkdir()
+        data.mkdir()
+        (conf / "config.yaml").write_text(json.dumps(config))
+        shutil.copyfile(CONFIG / "biopass.db", conf / "biopass.db")
+        binds = []
+        for name in ("faces", "models"):
+            source = DATA / name
+            if source.is_dir():
+                (data / name).mkdir()
+                binds += ["--ro-bind", str(source), str(source)]
+        print("请正对摄像头。开始独立人脸验证，结束后会显示匹配的样本标签。", flush=True)
+        result = subprocess.run(
+            ["timeout", "--foreground", "--signal=INT", "--kill-after=5s", "45",
+             "bwrap", "--unshare-net", "--ro-bind", "/", "/", "--dev-bind", "/dev", "/dev",
+             "--proc", "/proc", "--die-with-parent",
+             "--ro-bind", str(conf), str(CONFIG), "--bind", str(data), str(DATA),
+             *binds, "/usr/bin/biopass-helper", "auth", "--username", USER,
+             "--service", "matebook-face-diagnostic"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            for log in sorted((data / "logs").glob("*.log")):
+                for line in log.read_text(errors="replace").splitlines():
+                    match = re.search(r"Recognition PASSED \| matched face='(.*)' score=", line)
+                    if match and match[1] in samples:
+                        print(f"匹配到了人脸样本：{samples[match[1]]}")
+                        return
+            print("人脸验证通过，但当前 Biopass 版本未提供可识别的样本标签。")
+        elif result.returncode == 124:
+            raise RuntimeError("人脸测试超时。")
+        elif result.returncode == 2:
+            raise RuntimeError("人脸验证未启动，请检查摄像头、录入和模型。")
+        elif result.stderr.startswith("bwrap:"):
+            raise RuntimeError("无法建立隔离的人脸测试环境：" + result.stderr.strip())
+        else:
+            print("未匹配到人脸样本，或摄像头暂时不可用。")
+
+
+def verification_menu():
+    choice = input("验证测试：1 人脸，2 指纹，回车返回: ").strip()
+    try:
+        if choice == "1":
+            verify_face_samples()
+        elif choice == "2":
+            verify_fingerprint_samples()
+    except KeyboardInterrupt:
+        print("\n已取消验证测试。")
+
+
 def main():
     if os.geteuid() == 0:
         raise RuntimeError("请以当前桌面用户运行")
@@ -248,12 +449,14 @@ def main():
         capture_face(FACES / "本人-正脸.jpg")
         return
     while True:
-        choice = input("1 管理人脸，2 管理指纹，回车退出: ").strip()
+        choice = input("1 管理人脸，2 管理指纹，3 验证测试，回车退出: ").strip()
         try:
             if choice == "1":
                 face_menu()
             elif choice == "2":
                 finger_menu()
+            elif choice == "3":
+                verification_menu()
             else:
                 return
         except (ValueError, RuntimeError, OSError, subprocess.CalledProcessError) as error:
@@ -261,4 +464,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (EOFError, KeyboardInterrupt):
+        print("\n已退出。")

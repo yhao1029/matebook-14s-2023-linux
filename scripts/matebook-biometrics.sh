@@ -17,7 +17,7 @@ user=$(id -un)
 die() { printf '%s\n' "$*" >&2; exit 1; }
 confirm() { local answer; read -r -p "$1 [输入 YES 确认] " answer; [[ $answer == YES ]]; }
 packages=(git curl ca-certificates build-essential cmake pkg-config meson ninja-build dkms mokutil
-  libglib2.0-dev libgusb-dev libopencv-dev doctest-dev libpixman-1-dev python3-gi fprintd v4l-utils pamtester zenity)
+  libglib2.0-dev libgusb-dev libopencv-dev doctest-dev libpixman-1-dev python3-gi python3-yaml bubblewrap fprintd v4l-utils pamtester zenity)
 check() {
     . /etc/os-release
     [[ ${UBUNTU_CODENAME:-${VERSION_CODENAME:-}} == noble && $(dpkg --print-architecture) == amd64 ]] ||

@@ -1,4 +1,4 @@
-name: Publish v0.1.0 preview
+name: Publish v0.1.1 preview
 on:
   push:
     branches: [main]
@@ -19,17 +19,18 @@ jobs:
           for file in scripts/*.sh; do bash -n "$file"; done
           python3 -m py_compile scripts/*.py
           bash scripts/matebook-biometrics.sh --help
+          printf '3\n\n\n' | bash scripts/03-manage.sh | grep -F '验证测试：1 人脸，2 指纹'
           git ls-files -z README.md docs scripts |
-            tar --null -T - -czf matebook-biometrics-v0.1.0-preview.tar.gz
-          sha256sum matebook-biometrics-v0.1.0-preview.tar.gz > SHA256SUMS
+            tar --null -T - -czf matebook-biometrics-v0.1.1-preview.tar.gz
+          sha256sum matebook-biometrics-v0.1.1-preview.tar.gz > SHA256SUMS
       - name: Publish prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag=v0.1.0-preview
+          tag=v0.1.1-preview
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             exit 0
           fi
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "MateBook 14s 2023 Linux 生物识别 · v0.1.0 预览" --prerelease \
-            --notes-file docs/release-notes.md matebook-biometrics-v0.1.0-preview.tar.gz SHA256SUMS
+            --title "MateBook 14s 2023 Linux 生物识别 · v0.1.1 预览" --prerelease \
+            --notes-file docs/release-notes.md matebook-biometrics-v0.1.1-preview.tar.gz SHA256SUMS
