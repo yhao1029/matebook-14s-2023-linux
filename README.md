@@ -18,6 +18,6 @@
 - [总菜单](scripts/matebook-biometrics.sh)
 - [准备](scripts/01-prepare.sh) · [安装后端](scripts/02-install.sh) · [管理数据](scripts/03-manage.sh) · [卸载](scripts/04-uninstall.sh)
 
-下载整套文件后，在 `scripts/` 目录用普通桌面用户运行 `bash matebook-biometrics.sh`。全流程默认录一个人脸样本和右手食指。单项入口依赖同目录的辅助脚本，请一起下载。修订版提供导入本设备有效密钥与生成新配对两条路径；后者写入共享传感器，会影响 Windows/其他 Linux 的旧配对，必须单独确认。没有可公开的通用密钥模板。不要在已有正常配对的设备上仅为测试而重新配对。
+下载整套文件后，在 `scripts/` 目录用普通桌面用户运行 `bash matebook-biometrics.sh`。全流程默认录一个人脸样本和右手食指。单项入口依赖同目录的辅助脚本，请一起下载。修订版仅使用本设备已有有效通讯密钥：授权只读尝试 Windows 缓存，或手动导入。**不再提供传感器重新配对功能。** 不联网上传密钥、不修改 Windows Hello。[Linux 尝试失败后的 Windows 本地导出步骤](docs/windows-key.md)。
 
 脚本处于预览阶段，原部署的实机结果与本仓库脚本的验证范围分开记录。请先阅读手动流程。Arch、Fedora、Debian 原版、KDE、Xfce 的软件包、权限和登录管理器有差异，当前只提供参考思路。

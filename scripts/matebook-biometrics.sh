@@ -16,7 +16,7 @@ user=$(id -un)
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 confirm() { local answer; read -r -p "$1 [输入 YES 确认] " answer; [[ $answer == YES ]]; }
-packages=(git curl ca-certificates build-essential cmake pkg-config meson ninja-build dkms mokutil
+packages=(git curl ca-certificates build-essential cmake pkg-config meson ninja-build dkms mokutil python3-venv
   libglib2.0-dev libgusb-dev libopencv-dev doctest-dev libpixman-1-dev python3-gi python3-yaml bubblewrap fprintd v4l-utils pamtester zenity)
 check() {
     . /etc/os-release
@@ -57,7 +57,7 @@ restore() {
 }
 install_stack() {
     check
-    local secure key work pairing
+    local secure key work
     if [[ -d /sys/firmware/efi ]]; then
         secure=$(LC_ALL=C mokutil --sb-state) || die '无法确认 Secure Boot 状态。'
         [[ $secure == *'SecureBoot disabled'* ]] || die '本脚本要求 Secure Boot 已关闭。签名和 MOK 需另行配置。'
@@ -68,19 +68,13 @@ install_stack() {
     printf '%s  %s\n' 3830203cae937d7554d8ddccf5a47a728a9f0d5a45e57616d7cf13b70f35f0b9 "$cache/biopass.deb" | sha256sum -c -
     printf '%s  %s\n' 4a11f1777bb95bf4ad96721cac945a26e04bf19f57d905f241fe77ebeddf46d8 "$cache/mbedtls.tar.bz2" | sha256sum -c -
     echo '传感器通讯密钥不同于指纹样本，不能使用公开模板。'
-    echo '1 导入本设备有效配对文件（保留 Windows/其他 Linux 配对）'
-    echo '2 Linux 创建新配对（会写入传感器，旧系统密钥可能失效；卸载不能撤销硬件配对）'
-    read -r -p '选择 1 或 2，回车取消: ' pairing
-    case "$pairing" in
-        1)
-            read -r -p '输入本设备的 32 字节二进制密钥文件路径: ' key
-            [[ -f "$key" && $(stat -Lc %s -- "$key") == 32 ]] || die '不是有效的 32 字节文件。尚未修改系统。'
-            ;;
-        2)
-            confirm '理解这会改变共享传感器配对，Windows/其他 Linux 可能需要重新配置；仍创建新配对？' || return 1
-            ;;
-        *) die '已取消，尚未修改系统。' ;;
-    esac
+    key=$(mktemp "$cache/imported-key.XXXXXXXX")
+    trap "rm -f -- $(printf '%q' "$key")" EXIT
+    if ! bash "$here/acquire-key.sh" "$cache/gxfp" "$key"; then
+        rm -f -- "$key"
+        die '密钥获取未完成，已停止安装；参阅 docs/windows-key.md。'
+    fi
+    [[ $(stat -Lc %s -- "$key") == 32 ]] || die '密钥文件大小错误，停止安装。'
     confirm '安装 DKMS、私有 libfprint 和 Biopass？' || return 1
     local target
     for target in "$state" "$backend" "$dropin" "$autoload" "$src" /var/lib/fprint/gxfp; do
@@ -100,11 +94,6 @@ install_stack() {
         -DUSE_SHARED_MBEDTLS_LIBRARY=OFF -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF
     cmake --build "$work/tls-build" -j 4
     cmake --install "$work/tls-build"
-    if [[ $pairing == 2 ]]; then
-        cmake -S "$work/userspace" -B "$work/psk-build" -G Ninja \
-            -DCMAKE_PREFIX_PATH="$work/tls" -DBUILD_TESTING=OFF
-        cmake --build "$work/psk-build" --target gxfp_psk_tool -j 4
-    fi
     PKG_CONFIG_PATH="$work/tls/lib/pkgconfig" meson setup "$work/fprint-build" "$work/libfprint" \
         -Ddrivers=gxfp -Ddoc=false -Dintrospection=false -Dgtk-examples=false \
         -Dudev_rules=disabled -Dudev_hwdb=disabled
@@ -127,19 +116,9 @@ install_stack() {
     sudo dkms install -m gxfp -v "$driver_version" -k "$(uname -r)"
     sudo install -d -m 700 /var/lib/fprint/gxfp
     sudo modprobe gxfp
-    if [[ $pairing == 2 ]]; then
-        sudo systemctl stop fprintd
-        # Retain the generated key even if upload or later setup fails.
-        # Hardware provisioning cannot be undone by restoring files.
-        sudo install -d -m 700 "$state/pairing-recovery"
-        sudo "$work/psk-build/gxfp_psk_tool" --build-bb010002 "$state/pairing-recovery/blob.bin" \
-            --out-psk-raw32 "$state/pairing-recovery/psk_raw32.bin"
-        sudo chmod 600 "$state/pairing-recovery/psk_raw32.bin" "$state/pairing-recovery/blob.bin"
-        sudo "$work/psk-build/gxfp_psk_tool" --upload-bb010002 "$state/pairing-recovery/blob.bin"
-        sudo install -m 600 "$state/pairing-recovery/psk_raw32.bin" /var/lib/fprint/gxfp/psk_raw32.bin
-    else
-        sudo install -m 600 /dev/stdin /var/lib/fprint/gxfp/psk_raw32.bin < "$key"
-    fi
+    sudo install -m 600 /dev/stdin /var/lib/fprint/gxfp/psk_raw32.bin < "$key"
+    rm -f -- "$key"
+    trap - EXIT
     printf 'gxfp\n' | sudo tee "$autoload" >/dev/null
     printf '[Service]\nUMask=0077\nEnvironment=LD_LIBRARY_PATH=%s/lib\nEnvironment=FP_GXFP_PSK=/var/lib/fprint/gxfp/psk_raw32.bin\nDeviceAllow=/dev/gxfp rw\n' "$backend" |
         sudo tee "$dropin" >/dev/null
