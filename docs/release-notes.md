@@ -1,12 +1,24 @@
-## v0.1.1-preview
+# v0.2.0 · 干净 Zorin 系统实测版
 
-- 指纹录入会读取设备报告的采集次数并显示进度，提示最后一次采集与录入完成后的独立验证。
-- 区分取消、超时和 libfprint 温度估算保护。保护仍由 libfprint 执行。
-- 管理菜单新增「3 验证测试」。人脸显示匹配的本地样本标签。指纹显示命中的手指及已有备注。当前 Ubuntu 24.04 自带的 fprintd 需要逐项比对，测试时可能需要轻触同一根手指多次。
-- 本机已实测录入右手拇指，验证新指纹，并用新菜单识别人脸样本和右手食指。干净系统的完整安装仍待验证。
+机主在同一台 HUAWEI MateBook 14s 2023 的另一套干净 Zorin OS 中实际安装测试，确认本轮修订完全可用。原有 Windows Hello 配对保留，不执行传感器重新配对。
 
-## 用法
+- 完整补齐构建依赖，修正 gudev 漏装及 doctest/CMake 预检误报。
+- 授权后只读尝试获取本机 Windows 通讯密钥：兼容 WINDOWS/Windows 等路径大小写、推荐分区选择、隔离只读视图；失败说明原因并提供 Windows 本地导出指引。也支持手动导入本设备有效的 32 字节二进制密钥。
+- 指纹录入进度、独立验证、多手指管理及人脸/指纹验证测试。
+- 人脸录入上方为前置彩色预览，下方为实际红外人脸裁剪；候选冻结后可确认、重拍或取消。
+- 支持仅人脸、仅指纹或两者并行；补录另一种后可重新启用，密码回退保留。
+- 所有确认提示使用小写 yes，兼容大写输入。
 
-下载并解压整个压缩包，用普通桌面用户运行 `bash scripts/matebook-biometrics.sh`。已经完成部署的用户可直接运行新包里的 `bash scripts/03-manage.sh`。人脸验证测试需要 `bubblewrap` 和 `python3-yaml`。
+## 下载与运行
 
-自动安装适用 Ubuntu 24.04 系 amd64、GNOME/GDM 和 Goodix GXFP5130。安装指纹驱动需要本人设备已有的配对文件。手动配置、限制及恢复见 [配置与验证](https://github.com/yhao1029/matebook-14s-2023-linux/blob/main/docs/setup.md)。
+下载附件 matebook-biometrics-v0.2.0.tar.gz 和 SHA256SUMS，放在同一目录。执行 `sha256sum -c SHA256SUMS` 校验，然后解压完整压缩包。在解压目录以普通桌面用户执行：
+
+```bash
+bash scripts/matebook-biometrics.sh
+```
+
+首次安装选择 a 或按 1 → 2 → 3 → 5 分步执行；已有安装不要重复安装后端，管理数据选 3，更新启用选 5。需要管理员操作时由 sudo 提示认证。
+
+适用 Ubuntu 24.04 系 amd64、GNOME/GDM、GXFP5130。Secure Boot 的模块签名未自动处理。Windows 缓存可读/可解密不是所有环境都保证成立；BitLocker 或不兼容保护可能仍需本人导出密钥。未宣称其他发行版、冷启动/休眠恢复、照片/视频防伪或卸载全过程已实测。样本及密钥只保存在本机，不包含在发行包中。
+
+完整步骤：https://github.com/yhao1029/matebook-14s-2023-linux-biometric/blob/main/docs/setup.md

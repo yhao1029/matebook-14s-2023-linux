@@ -8,13 +8,13 @@
 
 离线读取明确涉及 Windows 的 SYSTEM/SECURITY 注册表中的 DPAPI_SYSTEM、系统主密钥和 Goodix 缓存；这些属于敏感数据，仅在本机内存解析，不打印或上传。安装依赖需要联网，但不会传送上述文件。
 
-脚本按编号列出已挂载 NTFS 卷，检查 SYSTEM、SECURITY 和 Goodix 缓存的文件特征，把完整候选排在前面并设为回车默认项；最终仍要求输入 YES 确认来源。也提供 m 手填挂载根目录、q 取消。没有完整候选就不设默认项。磁盘列表同时显示未挂载分区，未挂载/加密分区不能直接选来读取。
+脚本按编号列出已挂载 NTFS 卷，检查 SYSTEM、SECURITY 和 Goodix 缓存的文件特征，把完整候选排在前面并设为回车默认项；最终仍要求输入 yes 确认来源。也提供 m 手填挂载根目录、q 取消。没有完整候选就不设默认项。磁盘列表同时显示未挂载分区，未挂载/加密分区不能直接选来读取。
 
 路径每一级都兼容大小写，包括 Windows/WINDOWS、System32/SYSTEM32、ProgramData、缓存文件与主密钥文件名；发现大小写冲突或链接越界时停止。应选择分区根目录，不是 WINDOWS 文件夹，也不是 SYSTEM 文件本身。
 
 原 Windows 卷允许为桌面默认的可写挂载。脚本经管理员认证用 `unshare --mount --propagation private` 建立独立挂载空间，在 `/run` 创建临时 bind 视图，只把这个视图设为只读并验证，再运行密钥解析。不会重新挂载原路径、修改分区挂载配置、解锁 BitLocker、修复 NTFS 或删除休眠文件。完成或失败后卸载临时视图。视图不是快照，仍不能保证原文件没有被其他进程同时更改；解密完整性失败就停止。
 
-系统禁止 mount namespace、权限不足或视图不能设为只读时，明确停止并采用下方 Windows 本地导出方法。不会退回可写读取。依据：[unshare 手册](https://man7.org/linux/man-pages/man1/unshare.1.html)、[mount 手册的 bind mount 说明](https://man7.org/linux/man-pages/man8/mount.8.html)。此隔离视图流程尚未在干净系统完成实机端到端验收。
+系统禁止 mount namespace、权限不足或视图不能设为只读时，明确停止并采用下方 Windows 本地导出方法。不会退回可写读取。依据：[unshare 手册](https://man7.org/linux/man-pages/man1/unshare.1.html)、[mount 手册的 bind mount 说明](https://man7.org/linux/man-pages/man8/mount.8.html)。机主已在另一套干净 Zorin 系统中完成本次安装实测。
 
 ## Windows 本地导出（离线读取失败时）
 
@@ -33,4 +33,4 @@ DPAPI 失败：当前 Windows 上下文、系统保护或缓存格式可能不�
 
 成功导出和长度正确也不能证明缓存与传感器当前配对一致。若 Linux 握手失败，应停止并保留原 Windows 状态；不能通过自动重新配对来掩盖失败。
 
-这条新安装流程尚未完成干净系统端到端验收，当前只提供源码测试，不恢复旧版发行包。
+本次干净 Zorin 系统实测已通过，发布 v0.2.0；旧预览包保持撤回。Windows 本地导出备用路径不等同于此次 Linux 安装路径的实测。

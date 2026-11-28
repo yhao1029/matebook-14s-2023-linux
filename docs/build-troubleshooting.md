@@ -12,7 +12,7 @@ Ubuntu Noble 的 doctest-dev 2.4.11 提供 `/usr/lib/cmake/doctest/doctestConfig
 
 新版已把该包加入准备清单，菜单 2 也会先检查依赖，经确认安装缺少的软件包，然后检查 pkg-config。失败会在获取密钥、编译及修改认证前停止。
 
-更新整套 scripts 后可直接选择菜单 2；缺少包时输入 YES。也可手动 `sudo apt-get install --no-remove libgudev-1.0-dev` 后重试。不要继续选录入/启用：构建没有通过，后端还没有安装。
+更新整套 scripts 后可直接选择菜单 2；缺少包时输入 yes。也可手动 `sudo apt-get install --no-remove libgudev-1.0-dev` 后重试。不要继续选录入/启用：构建没有通过，后端还没有安装。
 
 本配置关闭图形示例和 introspection，因此日志中的 cairo 和 gobject-introspection 缺失不是本次致命错误；不要为消除所有可选依赖提示随意更改构建选项。
 
