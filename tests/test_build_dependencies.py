@@ -58,6 +58,11 @@ class BuildDependenciesTests(unittest.TestCase):
         self.assertIn('Meson/CMake', result.stdout)
         self.assertEqual(log, '')
 
+    def test_lowercase_yes_installs_missing_dependency(self):
+        result, log = self.run_preflight('yes\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('apt-get install', log)
+
 
 if __name__ == '__main__':
     unittest.main()

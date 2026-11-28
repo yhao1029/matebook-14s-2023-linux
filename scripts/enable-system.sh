@@ -43,8 +43,8 @@ for method in "${tests[@]}"; do
     read -r -p "独立认证测试，请$method，准备好按回车。"
     pamtester -I "tty=$(tty)" matebook-guide-probe "$1" authenticate
 done
-read -r -p '以上是否确实分别使用所选方式及原密码通过？输入 YES: ' answer
-[[ $answer == YES ]]
+read -r -p '以上是否确实分别使用所选方式及原密码通过？输入 yes: ' answer
+[[ ${answer,,} == yes ]]
 systemd-run --unit=matebook-guide-rollback --on-active=10m /bin/bash "$state/restore.sh" pam
 for service in sudo gdm-fingerprint; do
     install -m 644 "$state/$service.applied" "$scratch/$service"

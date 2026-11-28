@@ -186,7 +186,7 @@ def face_menu():
             if target.exists() or target.is_symlink():
                 raise RuntimeError("标签已存在")
             face.rename(target)
-        elif input(f"删除 {face.stem}？输入 YES: ") == "YES":
+        elif input(f"删除 {face.stem}？输入 yes: ").strip().lower() == "yes":
             face.unlink()
 
 
@@ -306,7 +306,7 @@ def finger_menu():
         action = input("r 删除旧记录并重新录入，d 删除，l 修改备注，回车返回: ").strip()
         if action == "l":
             note = label("输入新的本地备注")
-        elif action in ("r", "d") and input(f"确认移除旧{ name }？输入 YES: ") == "YES":
+        elif action in ("r", "d") and input(f"确认移除旧{ name }？输入 yes: ").strip().lower() == "yes":
             delete_finger(finger)
             labels.pop(finger, None)
             if action == "r":
@@ -478,7 +478,7 @@ def main():
             capture_face(FACES / "本人-正脸.jpg")
         except RuntimeError as error:
             print(error)
-            if input('暂时仅使用已录入指纹，继续启用？输入 YES: ') != 'YES':
+            if input('暂时仅使用已录入指纹，继续启用？输入 yes: ').strip().lower() != 'yes':
                 raise
         return
     while True:

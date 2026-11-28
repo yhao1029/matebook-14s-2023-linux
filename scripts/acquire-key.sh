@@ -15,8 +15,8 @@ case "$windows" in
     case "$mode" in
       1)
         echo '会读取 Goodix_Cache.bin、SYSTEM/SECURITY 中 DPAPI_SYSTEM 和对应系统主密钥，仅解密通讯密钥；不读取 SAM、指纹/人脸模板，不上传。'
-        read -r -p '是否允许以上本机读取？输入 YES: ' consent
-        [[ $consent == YES ]] || fail '未获授权，停止指纹安装。'
+        read -r -p '是否允许以上本机读取？输入 yes: ' consent
+        [[ ${consent,,} == yes ]] || fail '未获授权，停止指纹安装。'
         echo '只选择已经挂载的卷；将在独立挂载空间建立临时只读视图，不改变原挂载，不解锁或修复 Windows。'
         root=$(python3 "$here/windows_volume.py" --choose) || fail '未选定可用 Windows 分区。'
         python3 "$here/windows_volume.py" --files "$root" >/dev/null || fail 'Windows 文件检查失败。'
@@ -25,8 +25,8 @@ case "$windows" in
         done
         envdir="${XDG_CACHE_HOME:-$HOME/.cache}/matebook-biometrics/key-reader-venv"
         if [[ ! -x "$envdir/bin/python" ]]; then
-            read -r -p '需要 Linux 本地 DPAPI 解析依赖。允许建立隔离环境并安装 impacket==0.13.0？输入 YES: ' consent
-            [[ $consent == YES ]] || fail '未安装解析依赖。'
+            read -r -p '需要 Linux 本地 DPAPI 解析依赖。允许建立隔离环境并安装 impacket==0.13.0？输入 yes: ' consent
+            [[ ${consent,,} == yes ]] || fail '未安装解析依赖。'
             python3 -m venv "$envdir" || fail '缺少 python3-venv，请先安装该软件包。'
             "$envdir/bin/python" -m pip install 'impacket==0.13.0' || fail '解析依赖下载或安装失败。'
         fi

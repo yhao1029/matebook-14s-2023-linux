@@ -16,7 +16,7 @@ user=$(id -un)
 [[ $EUID != 0 ]] || { echo '请以桌面用户运行，脚本会按需调用 sudo。'; exit 1; }
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
-confirm() { local answer; read -r -p "$1 [输入 YES 确认] " answer; [[ $answer == YES ]]; }
+confirm() { local answer; read -r -p "$1 [输入 yes 确认] " answer; [[ ${answer,,} == yes ]]; }
 packages=(git curl ca-certificates build-essential cmake pkg-config meson ninja-build dkms mokutil python3-venv
   libglib2.0-dev libgusb-dev libgudev-1.0-dev libopencv-dev doctest-dev libpixman-1-dev python3-gi gir1.2-gtk-3.0 python3-yaml bubblewrap fprintd v4l-utils pamtester zenity)
 check() {

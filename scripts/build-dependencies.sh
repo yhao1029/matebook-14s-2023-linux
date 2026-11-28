@@ -9,8 +9,8 @@ ensure_build_dependencies() {
     done
     if ((${#missing[@]})); then
         printf '构建/运行依赖缺失：%s\n' "${missing[*]}" >&2
-        read -r -p '先安装这些 Linux 依赖，再继续后端安装？输入 YES: ' answer
-        [[ $answer == YES ]] || { echo '依赖未齐，停止，尚未获取密钥或安装后端。' >&2; return 1; }
+        read -r -p '先安装这些 Linux 依赖，再继续后端安装？输入 yes: ' answer
+        [[ ${answer,,} == yes ]] || { echo '依赖未齐，停止，尚未获取密钥或安装后端。' >&2; return 1; }
         sudo apt-get update || return 1
         sudo apt-get install --no-remove "${missing[@]}" || return 1
     fi

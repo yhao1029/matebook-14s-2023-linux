@@ -88,8 +88,8 @@ def choose_volume():
     if not root.is_dir():
         raise ValueError('所选位置不是已挂载的分区目录')
     required_files(root)
-    print(f'确认来源为本机 Windows 分区 {root}？输入 YES：', file=sys.stderr)
-    if input().strip() != 'YES':
+    print(f'确认来源为本机 Windows 分区 {root}？输入 yes：', file=sys.stderr)
+    if input().strip().lower() != 'yes':
         raise ValueError('未确认来源，已取消')
     return root.resolve()
 

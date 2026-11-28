@@ -50,6 +50,28 @@ class EnrollmentTests(unittest.TestCase):
         self.assertIn('if ! $reenable; then cp -p', text)
         self.assertIn('tests+=(', text)
 
+    def test_rgb_preview_prefers_same_physical_camera(self):
+        preview = module('face_preview')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sysfs = root/'sys'
+            nodes = [root/name for name in ('video0', 'video1', 'video2', 'video4')]
+            for node in nodes:
+                node.touch()
+                parent = sysfs/node.name
+                parent.mkdir(parents=True)
+                physical = root/('external' if node.name == 'video4' else 'internal')
+                interface = physical/node.name
+                interface.mkdir(parents=True, exist_ok=True)
+                (parent/'device').symlink_to(interface)
+            def formats(args, **kwargs):
+                node = Path(args[2]).name
+                return subprocess.CompletedProcess(args, 0,
+                    "'YUYV'" if node in ('video0', 'video4') else '', '')
+            with patch.object(Path, 'is_char_device', return_value=True), \
+                 patch.object(preview.subprocess, 'run', side_effect=formats):
+                self.assertEqual(preview.discover_color_camera(nodes[2], nodes, sysfs), str(nodes[0]))
+
 
 if __name__ == '__main__':
     unittest.main()
