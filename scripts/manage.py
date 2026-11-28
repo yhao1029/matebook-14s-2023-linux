@@ -44,16 +44,44 @@ def registered_faces():
                   and p.suffix.lower() in (".jpg", ".jpeg", ".png"))
 
 
+def discover_ir_camera():
+    from shutil import which
+    if not which('v4l2-ctl'):
+        raise RuntimeError('缺少 v4l2-ctl。请先完成准备步骤安装 v4l-utils，然后重试。')
+    candidates = {}
+    paths = sorted(Path('/dev/v4l/by-path').glob('*')) + sorted(Path('/dev').glob('video*'))
+    for path in paths:
+        if not path.resolve().is_char_device():
+            continue
+        try:
+            result = subprocess.run(['v4l2-ctl', '-d', str(path), '--list-formats-ext'],
+                                    text=True, capture_output=True, timeout=8)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if result.returncode == 0 and "'GREY'" in result.stdout:
+            candidates.setdefault(str(path.resolve()), str(path))
+    choices = list(candidates.values())
+    if len(choices) == 1:
+        print('自动识别原生 GREY 红外摄像头：' + choices[0])
+        return choices[0]
+    if choices:
+        for index, path in enumerate(choices, 1):
+            print(f'{index}. {path}')
+        choice = input('发现多个红外节点，输入编号（回车取消）: ').strip()
+        if choice.isdigit() and 1 <= int(choice) <= len(choices):
+            return choices[int(choice) - 1]
+    raise RuntimeError('未选定可读取的原生 GREY 红外节点。请检查摄像头隐私开关、权限及 v4l2-ctl --list-devices；不要填写猜测路径。')
+
+
 def initialize_face():
+    if not Path('/usr/bin/biopass-helper').exists():
+        raise RuntimeError('尚未安装 Biopass 后端，请先完成菜单 2；摄像头硬件存在不代表软件已安装。')
     for path in (CONFIG, DATA, FACES, DATA / "models"):
         private_dir(path)
     config_path = CONFIG / "config.yaml"
     if config_path.exists():
         return read_camera()
-    print("请用 v4l2-ctl --list-devices 及 --list-formats-ext 确认原生 GREY 红外节点。")
-    camera = input("输入 /dev/v4l/by-path/ 下的红外摄像头路径: ").strip()
-    if not camera.startswith("/dev/v4l/by-path/") or not Path(camera).resolve().is_char_device():
-        raise RuntimeError("无效的摄像头路径")
+    camera = discover_ir_camera()
     formats = subprocess.check_output(["v4l2-ctl", "-d", camera, "--list-formats-ext"], text=True)
     if "'GREY'" not in formats:
         raise RuntimeError("该节点没有原生 GREY 格式")
@@ -96,7 +124,8 @@ def read_camera():
     # JSON is valid YAML. For an existing GUI-written YAML file ask for the node
     # rather than editing unrelated settings.
     try:
-        return json.loads((CONFIG / "config.yaml").read_text())["methods"]["face"]["camera"]
+        import yaml
+        return yaml.safe_load((CONFIG / "config.yaml").read_text())["methods"]["face"]["camera"]
     except (ValueError, KeyError):
         return input("输入 Biopass 当前配置的红外摄像头路径: ").strip()
 

@@ -1,4 +1,4 @@
-name: Publish v0.1.1 preview
+name: Withdraw broken biometric previews
 on:
   push:
     branches: [main]
@@ -6,31 +6,23 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
-concurrency:
-  group: matebook-preview-release
 jobs:
-  release:
-    if: github.ref == 'refs/heads/main'
+  withdraw:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Check and package public files
-        run: |
-          for file in scripts/*.sh; do bash -n "$file"; done
-          python3 -m py_compile scripts/*.py
-          bash scripts/matebook-biometrics.sh --help
-          printf '3\n\n\n' | bash scripts/03-manage.sh | grep -F '验证测试：1 人脸，2 指纹'
-          git ls-files -z README.md docs scripts |
-            tar --null -T - -czf matebook-biometrics-v0.1.1-preview.tar.gz
-          sha256sum matebook-biometrics-v0.1.1-preview.tar.gz > SHA256SUMS
-      - name: Publish prerelease
+      - name: Remove only the two superseded preview releases
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          tag=v0.1.1-preview
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            exit 0
-          fi
-          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "MateBook 14s 2023 Linux 生物识别 · v0.1.1 预览" --prerelease \
-            --notes-file docs/release-notes.md matebook-biometrics-v0.1.1-preview.tar.gz SHA256SUMS
+          set -euo pipefail
+          for tag in v0.1.0-preview v0.1.1-preview; do
+            response=$(mktemp)
+            code=$(curl -sS -o "$response" -w '%{http_code}' \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$tag")
+            if [[ "$code" == 404 ]]; then continue; fi
+            [[ "$code" == 200 ]] || { cat "$response"; exit 1; }
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes
+          done
+          echo 'Release packages withdrawn. Tags/history retained; no replacement published.'
