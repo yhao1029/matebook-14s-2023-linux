@@ -18,31 +18,12 @@ case "$windows" in
         read -r -p '是否允许以上本机读取？输入 YES: ' consent
         [[ $consent == YES ]] || fail '未获授权，停止指纹安装。'
         echo '只检查已经挂载的卷，不自动挂载、解锁、修复或更改 Windows 分区。'
-        findmnt -rn -o TARGET,FSTYPE,OPTIONS | grep -E 'ntfs|fuseblk|bitlocker' || true
-        mapfile -t roots < <(python3 -c '
-import json, pathlib, subprocess
-data=json.loads(subprocess.check_output(["findmnt", "--json", "-o", "TARGET,FSTYPE"]))
-def walk(rows):
-    for row in rows:
-        p=pathlib.Path(row["target"])
-        if row.get("fstype") in ("ntfs", "ntfs3", "fuseblk") and (p/"Windows").is_dir() and (p/"ProgramData").is_dir():
-            print(p)
-        walk(row.get("children", []))
-walk(data.get("filesystems", []))')
-        if [[ ${#roots[@]} == 1 ]]; then
-            root=${roots[0]}
-            echo "识别到 Windows 卷：$root"
-            read -r -p '确认读取这个本机 Windows 卷？输入 YES: ' consent
-            [[ $consent == YES ]] || fail '未确认 Windows 来源，已停止。'
-        else
-            read -r -p '输入 Windows 分区的挂载根目录（含 Windows 和 ProgramData 的目录）: ' root
-        fi
-        [[ -d "$root" ]] || fail '未找到挂载目录：可能尚未挂载或 BitLocker 尚未由本人解锁。'
-        for path in Windows/System32/config/SYSTEM Windows/System32/config/SECURITY ProgramData/Goodix/Goodix_Cache.bin; do
-            sudo test -f "$root/$path" || fail "缺少 $path：可能选错卷、没有 Goodix 缓存，或驱动采用不同缓存格式。"
-            options=$(findmnt -n -o OPTIONS --target "$root/$path")
-            [[ ,$options, == *,ro,* ]] || fail 'Windows 卷不是只读挂载；停止，不自动重新挂载。'
-        done
+        root=$(python3 "$here/windows_volume.py" --choose) || fail '未选定可用 Windows 分区。'
+        files=$(python3 "$here/windows_volume.py" --files "$root") || fail 'Windows 文件检查失败。'
+        while IFS= read -r path; do
+            options=$(findmnt -n -o OPTIONS --target "$path")
+            [[ ,$options, == *,ro,* ]] || fail '所选 Windows 卷为可写挂载。为保护现有系统，停止读取；不会自动重新挂载。请改用 docs/windows-key.md 的 Windows 本地导出方法。'
+        done <<< "$files"
         envdir="${XDG_CACHE_HOME:-$HOME/.cache}/matebook-biometrics/key-reader-venv"
         if [[ ! -x "$envdir/bin/python" ]]; then
             read -r -p '需要 Linux 本地 DPAPI 解析依赖。允许建立隔离环境并安装 impacket==0.13.0？输入 YES: ' consent

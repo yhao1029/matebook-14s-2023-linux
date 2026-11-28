@@ -8,7 +8,11 @@
 
 离线读取明确涉及 Windows 的 SYSTEM/SECURITY 注册表中的 DPAPI_SYSTEM、系统主密钥和 Goodix 缓存；这些属于敏感数据，仅在本机内存解析，不打印或上传。安装依赖需要联网，但不会传送上述文件。
 
-脚本列出已挂载 NTFS 卷，并要求输入含 Windows/ProgramData 的挂载根目录。只接受已有的只读挂载；不会自动解锁 BitLocker、挂载、修复 NTFS、删除休眠文件或关闭 Windows 安全功能。没有这样的挂载，推荐采用下面的 Windows 导出方法，不要随便强制挂载。
+脚本按编号列出已挂载 NTFS 卷，检查 SYSTEM、SECURITY 和 Goodix 缓存的文件特征，把完整候选排在前面并设为回车默认项；最终仍要求输入 YES 确认来源。也提供 m 手填挂载根目录、q 取消。没有完整候选就不设默认项。磁盘列表同时显示未挂载分区，未挂载/加密分区不能直接选来读取。
+
+路径每一级都兼容大小写，包括 Windows/WINDOWS、System32/SYSTEM32、ProgramData、缓存文件与主密钥文件名；发现大小写冲突或链接越界时停止。应选择分区根目录，不是 WINDOWS 文件夹，也不是 SYSTEM 文件本身。
+
+只接受已有的只读挂载；不会自动解锁 BitLocker、挂载、修复 NTFS、删除休眠文件或关闭 Windows 安全功能。可写挂载会明确停止，推荐采用下面的 Windows 导出方法，不要随便强制挂载。
 
 ## Windows 本地导出（离线读取失败时）
 

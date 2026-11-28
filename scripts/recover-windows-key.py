@@ -14,6 +14,7 @@ from pathlib import Path
 import resource
 import sys
 import uuid
+from windows_volume import resolve_path
 
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 logging.disable(logging.CRITICAL)
@@ -119,14 +120,17 @@ def recover():
     if not blob['Flags'] & 4:
         raise RuntimeError('Cache is not protected in the expected machine scope')
     master_name = str(uuid.UUID(bytes_le=blob['GuidMasterKey']))
-    system = registry(WINDOWS / 'System32/config/SYSTEM')
-    security = registry(WINDOWS / 'System32/config/SECURITY')
+    system = registry(resolve_path(WINDOWS, 'System32/config/SYSTEM'))
+    security = registry(resolve_path(WINDOWS, 'System32/config/SECURITY'))
     try:
         keys = OnlyDpapiSystem(security, boot_key(system)).recover()
-        protect = WINDOWS / 'System32/Microsoft/Protect/S-1-5-18'
+        protect = resolve_path(WINDOWS, 'System32/Microsoft/Protect/S-1-5-18')
         psk = None
         for subdir, keyname in (('', 'MachineKey'), ('User', 'UserKey')):
-            target = protect / subdir / master_name
+            try:
+                target = resolve_path(protect, str(Path(subdir) / master_name))
+            except FileNotFoundError:
+                continue
             if not target.is_file():
                 continue
             data = target.read_bytes()
@@ -197,8 +201,8 @@ def main():
         if not args.windows_root or not args.output:
             parser.error('--windows-root and --output required')
         root = args.windows_root.resolve()
-        WINDOWS = root / 'Windows'
-        CACHE = root / 'ProgramData/Goodix/Goodix_Cache.bin'
+        WINDOWS = resolve_path(root, 'Windows')
+        CACHE = resolve_path(root, 'ProgramData/Goodix/Goodix_Cache.bin')
         DEST = args.output.resolve()
         import subprocess
         for path in (WINDOWS, CACHE):
@@ -206,7 +210,7 @@ def main():
             if 'ro' not in mount.strip().split(','):
                 raise RuntimeError('Windows volume must already be mounted read-only')
         for relative in ('System32/config/SYSTEM', 'System32/config/SECURITY', 'System32/Microsoft/Protect/S-1-5-18'):
-            resolved = (WINDOWS / relative).resolve()
+            resolved = resolve_path(WINDOWS, relative)
             if not resolved.is_relative_to(root):
                 raise RuntimeError('Windows source escapes selected volume')
     if args.self_test:
