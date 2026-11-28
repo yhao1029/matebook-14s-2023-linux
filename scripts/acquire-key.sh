@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Writes only a Linux-side imported key; never mounts or writes Windows/sensor.
+# Writes only a Linux-side key; reads Windows through a private read-only bind.
 set -euo pipefail
 umask 077
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -17,13 +17,12 @@ case "$windows" in
         echo '会读取 Goodix_Cache.bin、SYSTEM/SECURITY 中 DPAPI_SYSTEM 和对应系统主密钥，仅解密通讯密钥；不读取 SAM、指纹/人脸模板，不上传。'
         read -r -p '是否允许以上本机读取？输入 YES: ' consent
         [[ $consent == YES ]] || fail '未获授权，停止指纹安装。'
-        echo '只检查已经挂载的卷，不自动挂载、解锁、修复或更改 Windows 分区。'
+        echo '只选择已经挂载的卷；将在独立挂载空间建立临时只读视图，不改变原挂载，不解锁或修复 Windows。'
         root=$(python3 "$here/windows_volume.py" --choose) || fail '未选定可用 Windows 分区。'
-        files=$(python3 "$here/windows_volume.py" --files "$root") || fail 'Windows 文件检查失败。'
-        while IFS= read -r path; do
-            options=$(findmnt -n -o OPTIONS --target "$path")
-            [[ ,$options, == *,ro,* ]] || fail '所选 Windows 卷为可写挂载。为保护现有系统，停止读取；不会自动重新挂载。请改用 docs/windows-key.md 的 Windows 本地导出方法。'
-        done <<< "$files"
+        python3 "$here/windows_volume.py" --files "$root" >/dev/null || fail 'Windows 文件检查失败。'
+        for command in unshare mount umount findmnt readlink; do
+            command -v "$command" >/dev/null || fail "缺少隔离视图工具：$command（由 util-linux/coreutils 提供）。"
+        done
         envdir="${XDG_CACHE_HOME:-$HOME/.cache}/matebook-biometrics/key-reader-venv"
         if [[ ! -x "$envdir/bin/python" ]]; then
             read -r -p '需要 Linux 本地 DPAPI 解析依赖。允许建立隔离环境并安装 impacket==0.13.0？输入 YES: ' consent
@@ -34,10 +33,11 @@ case "$windows" in
         "$envdir/bin/python" -c 'import importlib.metadata; assert importlib.metadata.version("impacket") == "0.13.0"' || fail '解析依赖版本不匹配。'
         private=$(sudo mktemp -d /run/matebook-key.XXXXXXXX)
         trap 'sudo rm -f -- "$private/psk.bin"; sudo rmdir -- "$private"' EXIT
-        if ! sudo "$envdir/bin/python" "$here/recover-windows-key.py" \
-            --recover-existing-communication-key --windows-root "$root" \
-            --format-helper "$source_tree/userspace/tools/unseal_bb010002.py" --output "$private/psk.bin"; then
-            fail '离线 DPAPI 解密失败：当前支持的机器范围保护/主密钥/缓存完整性校验未通过；不会修改 Windows 以尝试修复。'
+        original_ns=$(readlink /proc/self/ns/mnt)
+        if ! sudo unshare --mount --propagation private /bin/bash "$here/read-windows-key.sh" \
+            "$original_ns" "$root" "$envdir/bin/python" "$here/recover-windows-key.py" \
+            "$source_tree/userspace/tools/unseal_bb010002.py" "$private/psk.bin"; then
+            fail '只读视图或离线解密未完成：请看上方具体错误。可能是系统禁用挂载命名空间、权限不足，或 DPAPI/缓存格式不受支持；不会改用可写读取或重新配对。'
         fi
         sudo cat "$private/psk.bin" > "$output"
         ;;

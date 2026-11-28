@@ -12,7 +12,9 @@
 
 路径每一级都兼容大小写，包括 Windows/WINDOWS、System32/SYSTEM32、ProgramData、缓存文件与主密钥文件名；发现大小写冲突或链接越界时停止。应选择分区根目录，不是 WINDOWS 文件夹，也不是 SYSTEM 文件本身。
 
-只接受已有的只读挂载；不会自动解锁 BitLocker、挂载、修复 NTFS、删除休眠文件或关闭 Windows 安全功能。可写挂载会明确停止，推荐采用下面的 Windows 导出方法，不要随便强制挂载。
+原 Windows 卷允许为桌面默认的可写挂载。脚本经管理员认证用 `unshare --mount --propagation private` 建立独立挂载空间，在 `/run` 创建临时 bind 视图，只把这个视图设为只读并验证，再运行密钥解析。不会重新挂载原路径、修改分区挂载配置、解锁 BitLocker、修复 NTFS 或删除休眠文件。完成或失败后卸载临时视图。视图不是快照，仍不能保证原文件没有被其他进程同时更改；解密完整性失败就停止。
+
+系统禁止 mount namespace、权限不足或视图不能设为只读时，明确停止并采用下方 Windows 本地导出方法。不会退回可写读取。依据：[unshare 手册](https://man7.org/linux/man-pages/man1/unshare.1.html)、[mount 手册的 bind mount 说明](https://man7.org/linux/man-pages/man8/mount.8.html)。此隔离视图流程尚未在干净系统完成实机端到端验收。
 
 ## Windows 本地导出（离线读取失败时）
 

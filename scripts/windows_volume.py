@@ -62,7 +62,7 @@ def choose_volume():
     print('已挂载的 NTFS 分区（只查看目录，不自动挂载或解锁）：', file=sys.stderr)
     volumes = mounted_volumes()
     for number, row in enumerate(volumes, 1):
-        status = '只读' if 'ro' in row.get('options', '').split(',') else '可写挂载，读取前会停止'
+        status = '只读挂载' if 'ro' in row.get('options', '').split(',') else '可写挂载，将通过隔离只读视图读取'
         print(f"{number}. {row.get('source', '?')} → {row['target']} | 文件特征 {row['score']}/3 | {status}", file=sys.stderr)
     recommended = bool(volumes and volumes[0]['score'] == 3)
     if recommended:
