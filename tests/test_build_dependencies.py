@@ -14,7 +14,8 @@ class BuildDependenciesTests(unittest.TestCase):
             bodies = {
                 'dpkg-query': 'if [[ $MISSING == yes && ${*: -1} == libgudev-1.0-dev ]]; then exit 1; fi; printf installed',
                 'sudo': 'printf "%s\\n" "$*" >> "$LOG"',
-                'pkg-config': '[[ $BROKEN_PC != yes ]]',
+                # Model Noble: normal .pc dependencies exist, doctest.pc does not.
+                'pkg-config': '[[ $BROKEN_PC != yes && $* != *doctest* ]]',
             }
             for name, body in bodies.items():
                 path = root / name
@@ -24,7 +25,7 @@ class BuildDependenciesTests(unittest.TestCase):
                        LOG=str(root / 'log'), MISSING='yes' if missing else 'no',
                        BROKEN_PC='yes' if broken_pc else 'no')
             result = subprocess.run(['bash', '-c',
-                'source "$1"; ensure_build_dependencies libglib2.0-dev libgudev-1.0-dev',
+                'source "$1"; ensure_build_dependencies libglib2.0-dev libgudev-1.0-dev doctest-dev',
                 'test', str(HELPER)], input=answer, text=True, capture_output=True, env=env, timeout=10)
             log = (root / 'log').read_text() if (root / 'log').exists() else ''
             return result, log
@@ -49,6 +50,12 @@ class BuildDependenciesTests(unittest.TestCase):
     def test_ready_environment_no_apt(self):
         result, log = self.run_preflight('', missing=False)
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(log, '')
+
+    def test_cmake_only_doctest_does_not_block_preflight(self):
+        result, log = self.run_preflight('', missing=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Meson/CMake', result.stdout)
         self.assertEqual(log, '')
 
 

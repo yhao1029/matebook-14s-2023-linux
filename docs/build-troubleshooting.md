@@ -1,5 +1,11 @@
 # 构建阶段的 gudev 缺失
 
+## 预检错误：pkg-config 无法解析 doctest
+
+Ubuntu Noble 的 doctest-dev 2.4.11 提供 `/usr/lib/cmake/doctest/doctestConfig.cmake`，没有 doctest.pc。此前把 doctest 强制列入 pkg-config 预检是脚本错误。现已删除该错误条件，仍检查 doctest-dev 是否安装，交由 Meson 通过 CMake 查找并验证版本。无需重复安装步骤 1，也不要手造 doctest.pc 或修改全局搜索路径。更新脚本后重试菜单 2。
+
+## Meson 错误：缺少 gudev
+
 日志 `ERROR: Problem encountered: udev is required for SPI support`、`gudev-1.0 found: NO` 表示缺少 `libgudev-1.0-dev`，不是指纹器不支持。
 
 固定版本上游 `libfprint/meson.build` 把 gxfp 映射为依赖 udev helper，helper 无条件检查 gudev。`-Dudev_rules=disabled` 只禁止安装规则，不会取消编译依赖。
