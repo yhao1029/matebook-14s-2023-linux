@@ -18,7 +18,7 @@ user=$(id -un)
 die() { printf '%s\n' "$*" >&2; exit 1; }
 confirm() { local answer; read -r -p "$1 [输入 YES 确认] " answer; [[ $answer == YES ]]; }
 packages=(git curl ca-certificates build-essential cmake pkg-config meson ninja-build dkms mokutil python3-venv
-  libglib2.0-dev libgusb-dev libgudev-1.0-dev libopencv-dev doctest-dev libpixman-1-dev python3-gi python3-yaml bubblewrap fprintd v4l-utils pamtester zenity)
+  libglib2.0-dev libgusb-dev libgudev-1.0-dev libopencv-dev doctest-dev libpixman-1-dev python3-gi gir1.2-gtk-3.0 python3-yaml bubblewrap fprintd v4l-utils pamtester zenity)
 check() {
     . /etc/os-release
     [[ ${UBUNTU_CODENAME:-${VERSION_CODENAME:-}} == noble && $(dpkg --print-architecture) == amd64 ]] ||
@@ -144,12 +144,12 @@ manage() { /usr/bin/python3 "$here/manage.py" "$@"; }
 enable() {
     check
     sudo test -f "$state/managed" || die '尚未完成菜单 2 的后端安装，因此不能启用认证。已有其他方案安装的系统不自动接管。'
-    /usr/bin/python3 "$here/manage.py" ready
-    fprintd-list "$user" | grep -q 'finger' || die '请先录入指纹。'
-    sudo test ! -e "$state/enabled" || die '已启用。'
+    local methods
+    methods=$(/usr/bin/python3 "$here/manage.py" ready) || die '请至少完成一种生物识别录入。'
+    echo "本次启用方式：$methods（原密码保留）"
     confirm '修改 sudo 与 GDM 的 PAM 配置并启动 10 分钟恢复计时器？' || return 1
-    sudo /bin/bash "$here/enable-system.sh" "$user"
-    echo '请在新终端分别用人脸、指纹和密码执行 sudo -k /usr/bin/true，并测试三种锁屏解锁。'
+    sudo /bin/bash "$here/enable-system.sh" "$user" "$methods"
+    echo '请在新终端测试本次启用的方式与原密码，并测试锁屏解锁。'
     if confirm '全部测试通过并保留设置？'; then
         sudo systemctl stop matebook-guide-rollback.timer
     else

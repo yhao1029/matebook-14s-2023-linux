@@ -79,8 +79,12 @@ def initialize_face():
     for path in (CONFIG, DATA, FACES, DATA / "models"):
         private_dir(path)
     config_path = CONFIG / "config.yaml"
+    previous = None
     if config_path.exists():
-        return read_camera()
+        import yaml
+        previous = yaml.safe_load(config_path.read_text())
+        if previous.get('methods', {}).get('face', {}).get('camera'):
+            return read_camera()
     camera = discover_ir_camera()
     formats = subprocess.check_output(["v4l2-ctl", "-d", camera, "--list-formats-ext"], text=True)
     if "'GREY'" not in formats:
@@ -116,6 +120,11 @@ def initialize_face():
             "fingerprint": {"enable": True, "retries": 3, "timeout": 5000},
         },
     }
+    if previous:
+        face_defaults = config['methods']['face']
+        face_defaults.update(previous.get('methods', {}).get('face', {}))
+        config.update(previous)
+        config.setdefault('methods', {})['face'] = face_defaults
     config_path.write_text(json.dumps(config, indent=2))
     return camera
 
@@ -148,42 +157,8 @@ def capture_face(destination):
         row = db.execute("SELECT path FROM models WHERE id=?", (MODELS[0][0],)).fetchone()
     if not row:
         raise RuntimeError("Biopass 中还没有安装 YOLOv8n 人脸检测模型")
-    input("正对镜头约 40–60 厘米，准备好后按回车。")
-    with subprocess.Popen(
-        ["/usr/bin/biopass-helper", "preview-session", "--camera", camera, "--model", row[0]],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0,
-    ) as proc:
-        def reply():
-            end = time.monotonic() + 20
-            result = bytearray()
-            while time.monotonic() < end and len(result) < 4096:
-                if select.select([proc.stdout], [], [], 0.2)[0]:
-                    char = proc.stdout.read(1)
-                    if char == b"\n":
-                        return result.decode()
-                    if not char:
-                        break
-                    result.extend(char)
-            raise RuntimeError("摄像头连接超时")
-        try:
-            if reply() != "READY":
-                raise RuntimeError("无法打开摄像头")
-            for _ in range(12):
-                proc.stdin.write(f"CAPTURE {destination}\n".encode())
-                result = reply()
-                if result == "OK":
-                    destination.chmod(0o600)
-                    return
-                if result != "NO_FACE":
-                    break
-            raise RuntimeError("未采集到清晰人脸，请调整姿态与光线")
-        finally:
-            if proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(3)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
+    from face_preview import capture_with_preview
+    capture_with_preview(camera, row[0], destination)
 
 
 def face_name():
@@ -465,17 +440,46 @@ def verification_menu():
         print("\n已取消验证测试。")
 
 
+def configure_available_methods():
+    import yaml
+    face = bool(registered_faces())
+    result = subprocess.run(['fprintd-list', USER], text=True, capture_output=True)
+    finger = bool(re.search(r'^\s*- #\d+: [\w-]+', result.stdout, re.M))
+    if not face and not finger:
+        raise RuntimeError('请至少录入一种：人脸或指纹。')
+    private_dir(CONFIG)
+    path = CONFIG / 'config.yaml'
+    config = yaml.safe_load(path.read_text()) if path.exists() else {
+        'schema_version': 2,
+        'strategy': {'execution_mode': 'parallel', 'order': ['face', 'fingerprint'],
+                     'ignore_services': ['gdm-password', 'sshd', 'pkexec', 'polkit-1']},
+        'methods': {'face': {'enable': False},
+                    'fingerprint': {'enable': True, 'retries': 3, 'timeout': 5000}}}
+    config['methods'].setdefault('face', {})['enable'] = face
+    config['methods'].setdefault('fingerprint', {})['enable'] = finger
+    temporary = CONFIG / '.config-enable.tmp'
+    with temporary.open('w') as output:
+        json.dump(config, output, indent=2)
+    temporary.chmod(0o600)
+    temporary.replace(path)
+    return ','.join(name for name, active in (('face', face), ('fingerprint', finger)) if active)
+
+
 def main():
     if os.geteuid() == 0:
         raise RuntimeError("请以当前桌面用户运行")
     command = sys.argv[1] if len(sys.argv) > 1 else ""
     if command == "ready":
-        if not registered_faces():
-            raise RuntimeError("请先录入人脸")
+        print(configure_available_methods())
         return
     if command == "default":
         enroll_finger("right-index-finger")
-        capture_face(FACES / "本人-正脸.jpg")
+        try:
+            capture_face(FACES / "本人-正脸.jpg")
+        except RuntimeError as error:
+            print(error)
+            if input('暂时仅使用已录入指纹，继续启用？输入 YES: ') != 'YES':
+                raise
         return
     while True:
         choice = input("1 管理人脸，2 管理指纹，3 验证测试，回车退出: ").strip()
