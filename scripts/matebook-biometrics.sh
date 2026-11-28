@@ -4,6 +4,7 @@ set -euo pipefail
 umask 077
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 here=$PWD
+source "$here/build-dependencies.sh"
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/matebook-biometrics"
 state=/var/lib/matebook-biometrics-guide
 driver_version=0.1.0-guide
@@ -17,7 +18,7 @@ user=$(id -un)
 die() { printf '%s\n' "$*" >&2; exit 1; }
 confirm() { local answer; read -r -p "$1 [输入 YES 确认] " answer; [[ $answer == YES ]]; }
 packages=(git curl ca-certificates build-essential cmake pkg-config meson ninja-build dkms mokutil python3-venv
-  libglib2.0-dev libgusb-dev libopencv-dev doctest-dev libpixman-1-dev python3-gi python3-yaml bubblewrap fprintd v4l-utils pamtester zenity)
+  libglib2.0-dev libgusb-dev libgudev-1.0-dev libopencv-dev doctest-dev libpixman-1-dev python3-gi python3-yaml bubblewrap fprintd v4l-utils pamtester zenity)
 check() {
     . /etc/os-release
     [[ ${UBUNTU_CODENAME:-${VERSION_CODENAME:-}} == noble && $(dpkg --print-architecture) == amd64 ]] ||
@@ -57,6 +58,10 @@ restore() {
 }
 install_stack() {
     check
+    if [[ ! -e /lib/modules/$(uname -r)/build/Makefile ]]; then
+        packages+=("linux-headers-$(uname -r)")
+    fi
+    ensure_build_dependencies "${packages[@]}" || die '依赖预检未通过，安装停止。'
     local secure key work
     if [[ -d /sys/firmware/efi ]]; then
         secure=$(LC_ALL=C mokutil --sb-state) || die '无法确认 Secure Boot 状态。'
